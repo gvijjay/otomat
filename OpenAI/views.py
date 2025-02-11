@@ -405,40 +405,48 @@ def connection(request):
 
 # Upload functionality only
 import os
-import io
 import json
+import io
 import pandas as pd
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import SuspiciousOperation
-import xmltodict
 
 
 # Helper function to store email and data locally
-def save_email_and_data_locally(email, df, upload_dir):
-    # Debug statement
+def save_email_and_data_locally(email, df, upload_dir, file_extension):
     # Save email
     email_file_path = os.path.join(upload_dir, "email.json")
     with open(email_file_path, "w") as email_file:
         json.dump({"email": email}, email_file, indent=4)
 
-    # Save data as CSV and Excel
-    csv_file_path = os.path.join(upload_dir, "data.csv")
-    df.to_csv(csv_file_path, index=False)
+    # Determine the correct folder to save the file
+    if file_extension == ".csv":
+        save_folder = os.path.join(upload_dir, "csv")
+    elif file_extension in [".xls", ".xlsx"]:
+        save_folder = os.path.join(upload_dir, "excel")
+    else:
+        raise ValueError("Unsupported file format")
 
+    os.makedirs(save_folder, exist_ok=True)  # Ensure the folder exists
 
-    excel_file_path = os.path.join(upload_dir, "data1.xlsx")
-    df.to_excel(excel_file_path, index=False, engine="openpyxl")
-
+    # Save the data in the appropriate format
+    if file_extension == ".csv":
+        file_path = os.path.join(save_folder, "data.csv")
+        df.to_csv(file_path, index=False)
+    elif file_extension in [".xls", ".xlsx"]:
+        file_path = os.path.join(save_folder, "data1.xlsx")
+        df.to_excel(file_path, index=False, engine="openpyxl")
 
 
 # Helper function to load email and data from local storage
 def load_email_and_data(upload_dir):
     print("[DEBUG] Loading email and data from local storage...")  # Debug statement
     email_file_path = os.path.join(upload_dir, "email.json")
-    csv_file_path = os.path.join(upload_dir, "data.csv")
+    csv_file_path = os.path.join(upload_dir, "csv", "data.csv")
+    excel_file_path = os.path.join(upload_dir, "excel", "data1.xlsx")
 
-    if not os.path.exists(email_file_path) or not os.path.exists(csv_file_path):
+    if not os.path.exists(email_file_path):
         return None, None
 
     # Load email
@@ -446,9 +454,14 @@ def load_email_and_data(upload_dir):
         email_data = json.load(email_file)
         email = email_data.get("email")
 
+    # Load data (check for file availability in csv or excel folder)
+    if os.path.exists(csv_file_path):
+        df = pd.read_csv(csv_file_path)
+    elif os.path.exists(excel_file_path):
+        df = pd.read_excel(excel_file_path)
+    else:
+        df = None
 
-    # Load data
-    df = pd.read_csv(csv_file_path)
     return email, df
 
 
@@ -459,23 +472,18 @@ def upload_and_store_data(request):
 
         if request.method == "POST":
             email = request.POST.get("mail")
-
-
             files = request.FILES.get("file")  # Retrieve the uploaded file
-            if not files:
 
+            if not files:
                 return JsonResponse({"error": "No files uploaded"}, status=400)
 
             file_name = files.name
             file_extension = os.path.splitext(file_name)[1].lower()  # Extract file extension
 
-
-
             try:
                 # Create a directory for storing uploaded files
                 upload_dir = "uploads"
                 os.makedirs(upload_dir, exist_ok=True)
-
 
                 # Save the uploaded file locally
                 local_file_path = os.path.join(upload_dir, file_name)
@@ -483,13 +491,11 @@ def upload_and_store_data(request):
                     for chunk in files.chunks():
                         f.write(chunk)
 
-
                 # Process the uploaded file based on its extension
                 if file_extension == ".csv":
                     print("[DEBUG] Processing as CSV file...")  # Debug statement
                     files.seek(0)  # Reset file pointer
                     content = files.read().decode("utf-8")
-
                     csv_data = io.StringIO(content)
                     df = pd.read_csv(csv_data)
                     print("[DEBUG] CSV parsed successfully. DataFrame shape:", df.shape)  # Debug statement
@@ -506,8 +512,8 @@ def upload_and_store_data(request):
                 if df.empty:
                     return JsonResponse({"error": "Uploaded file contains no data"}, status=400)
 
-                # Save email and data locally
-                save_email_and_data_locally(email, df, upload_dir)
+                # Save email and data locally in the appropriate folder
+                save_email_and_data_locally(email, df, upload_dir, file_extension)
 
                 # Store data directly into the database
                 print("[DEBUG] Storing data into the database...")  # Debug statement
@@ -537,6 +543,8 @@ def upload_and_store_data(request):
     except Exception as e:
         print("[ERROR] An error occurred:", str(e))  # Debug statement
         return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
+
+
 
 
 @csrf_exempt
