@@ -20,6 +20,7 @@ from keras.models import load_model
 from openai import OpenAI
 from plotly.graph_objs import Figure
 from prophet import Prophet
+from rest_framework.decorators import api_view
 from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -3706,10 +3707,8 @@ def make_serializable(obj):
 
 
 # Dashboard with AI
-
 from plotly.graph_objects import Figure
 import pandas as pd
-
 
 def analyze_dataset1(df):
     global important_numerical, important_categorical
@@ -3720,138 +3719,114 @@ def analyze_dataset1(df):
     categorical_columns = df.select_dtypes(exclude=['number']).columns.tolist()
     date_columns = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
 
-    # Debug: Print dataset metadata
-    print("Numerical Columns:", numerical_columns)
-    print("Categorical Columns:", categorical_columns)
-    print("Date Columns:", date_columns)
-
     # Select top 3-4 important numerical columns (based on correlation or variance)
     if numerical_columns:
         # Calculate correlation to find relationships
         correlation_matrix = df[numerical_columns].corr().abs()
         important_numerical = correlation_matrix.mean().nlargest(3).index.tolist()  # Top 3 numerical columns
-        print("Important Numerical Columns:", important_numerical)
 
     # Select the most important categorical column (based on unique values)
     if categorical_columns:
         important_categorical = max(categorical_columns, key=lambda col: df[col].nunique())
-        print("Important Categorical Column:", important_categorical)
 
-    # Generate advanced charts
-    # 1. Box Plot: Outlier detection and distribution analysis
+    # BASIC GRAPHS (4 total)
+    # 1. Histogram (basic)
+    if important_numerical:
+        queries.append({
+            "type": "histogram",
+            "query": f"Generate a histogram for '{important_numerical[0]}' to show value distribution.",
+            "analysis": "Basic Distribution Analysis",
+            "category": "basic"
+        })
+
+    # 2. Bar chart (basic)
+    if categorical_columns:
+        queries.append({
+            "type": "bar",
+            "query": f"Generate a bar chart showing value counts for '{important_categorical}'.",
+            "analysis": "Basic Categorical Analysis",
+            "category": "basic"
+        })
+
+    # 3. Scatter plot (basic)
+    if len(important_numerical) >= 2:
+        queries.append({
+            "type": "scatter",
+            "query": f"Generate a scatter plot comparing '{important_numerical[0]}' and '{important_numerical[1]}'.",
+            "analysis": "Basic Relationship Analysis",
+            "category": "basic"
+        })
+
+    # 4. Line chart (basic)
+    if date_columns and important_numerical:
+        queries.append({
+            "type": "line",
+            "query": f"Generate a line chart showing '{important_numerical[0]}' over time using '{date_columns[0]}'.",
+            "analysis": "Basic Trend Analysis",
+            "category": "basic"
+        })
+    elif important_numerical:  # Fallback if no date columns
+        queries.append({
+            "type": "line",
+            "query": f"Generate a line chart showing trend of '{important_numerical[0]}'.",
+            "analysis": "Basic Trend Analysis",
+            "category": "basic"
+        })
+
+    # ADVANCED GRAPHS (4 total)
+    # 1. Box plot (advanced)
     if important_numerical:
         queries.append({
             "type": "box",
             "query": f"Generate a box plot for '{important_numerical[0]}' to analyze outliers and data distribution.",
-            "analysis": f"Outlier Detection and Distribution Analysis"
+            "analysis": "Advanced Outlier Detection",
+            "category": "advanced"
         })
 
-    # 2. Heatmap: Correlation between numerical columns
-    if len(important_numerical) >= 2:
+    # 2. Heatmap (advanced)
+    if len(numerical_columns) >= 2:
         queries.append({
             "type": "heatmap",
-            "query": f"Generate a heatmap showing the correlation between numerical columns: {', '.join(important_numerical)}.",
-            "analysis": f"Correlation Analysis"
+            "query": f"Generate a heatmap showing correlations between numerical columns.",
+            "analysis": "Advanced Correlation Analysis",
+            "category": "advanced"
         })
 
-    # 9. Distplot: Distribution of a numerical variable
+    # 3. Violin plot (advanced)
+    if important_numerical and categorical_columns:
+        queries.append({
+            "type": "violin",
+            "query": f"Generate a violin plot comparing distribution of '{important_numerical[0]}' across categories in '{important_categorical}'.",
+            "analysis": "Advanced Distribution Comparison",
+            "category": "advanced"
+        })
+
+    # 4. 3D Scatter plot (advanced)
+    if len(important_numerical) >= 3:
+        queries.append({
+            "type": "3d_scatter",
+            "query": f"Generate a 3D scatter plot analyzing relationships between '{important_numerical[0]}', '{important_numerical[1]}', and '{important_numerical[2]}'.",
+            "analysis": "Advanced Multivariate Analysis",
+            "category": "advanced"
+        })
+
+    elif len(important_numerical) >= 2:  # Fallback if only 2 numerical columns
+        queries.append({
+            "type": "scatter_matrix",
+            "query": f"Generate a scatter matrix for numerical columns to analyze pairwise relationships.",
+            "analysis": "Advanced Pairwise Analysis",
+            "category": "advanced"
+        })
+
     if important_numerical:
         queries.append({
             "type": "distplot",
             "query": f"Generate a distplot showing the distribution of '{important_numerical[0]}'.",
             "analysis": f"Distribution Analysis",
+            "category": "advanced"
         })
 
-    if categorical_columns:
-        queries.append({
-            "type": "sunburst",
-            "query": f"Generate a Sunburst chart for '{important_categorical}' to visualize category hierarchy.",
-            "analysis": "Hierarchical Category Analysis"
-        })
-
-    # 6. 3D Scatter Plot: Multivariate analysis
-    if len(important_numerical) >= 3:
-        queries.append({
-            "type": "3d_scatter",
-            "query": f"Generate a 3D scatter plot to analyze relationships between '{important_numerical[0]}', '{important_numerical[1]}', and '{important_numerical[2]}'.",
-            "analysis": "Multivariate Analysis"
-        })
-
-    # Debug: Print generated queries
-    print("Generated Queries:", queries)
     return queries
-
-
-# dynamic selection of Columns
-# import pandas as pd
-# import random
-#
-# def analyze_dataset1(df):
-#     queries = []
-#
-#     # Get metadata about the dataset
-#     numerical_columns = df.select_dtypes(include=['number']).columns.tolist()
-#     categorical_columns = df.select_dtypes(exclude=['number']).columns.tolist()
-#     date_columns = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
-#
-#     print("Numerical Columns:", numerical_columns)
-#     print("Categorical Columns:", categorical_columns)
-#     print("Date Columns:", date_columns)
-#
-#     # Ensure we have numerical and categorical columns
-#     if not numerical_columns or not categorical_columns:
-#         print("Insufficient numerical or categorical columns for analysis.")
-#         return []
-#
-#     # Dynamically pick numerical and categorical columns for analysis
-#     selected_numerical = random.sample(numerical_columns, min(len(numerical_columns), 3))
-#     selected_categorical = random.choice(categorical_columns) if categorical_columns else None
-#
-#     print("Selected Numerical Columns:", selected_numerical)
-#     print("Selected Categorical Column:", selected_categorical)
-#
-#     # 1. Line Graph: Trends over time
-#     if date_columns:
-#         queries.append({
-#             "type": "line",
-#             "query": f"Generate a line graph showing trends of {', '.join(selected_numerical[:2])} over time using '{random.choice(date_columns)}'.",
-#             "analysis": "Trend Analysis"
-#         })
-#
-#     # 2. Bar Graph: Comparison across categories
-#     if selected_categorical:
-#         queries.append({
-#             "type": "bar",
-#             "query": f"Generate a bar graph comparing {', '.join(selected_numerical)} across '{selected_categorical}' categories.",
-#             "analysis": "Category Comparison"
-#         })
-#
-#     # 3. Scatter Plot: Relationship between two numerical variables
-#     if len(selected_numerical) >= 2:
-#         queries.append({
-#             "type": "scatter",
-#             "query": f"Generate a scatter plot analyzing the relationship between '{selected_numerical[0]}' and '{selected_numerical[1]}'.",
-#             "analysis": "Correlation Analysis"
-#         })
-#
-#     # 4. Histogram: Distribution of a single numerical variable
-#     queries.append({
-#         "type": "histogram",
-#         "query": f"Generate a histogram for '{random.choice(selected_numerical)}' to analyze its distribution.",
-#         "analysis": "Distribution Analysis"
-#     })
-#
-#     # 5. Box Plot: Outlier Detection
-#     if len(selected_numerical) > 1:
-#         queries.append({
-#             "type": "box",
-#             "query": f"Generate a box plot for '{random.choice(selected_numerical)}' to analyze outliers and data distribution.",
-#             "analysis": "Outlier Detection"
-#         })
-#
-#     print("Generated Queries:", queries)
-#     return queries
-
 
 @csrf_exempt
 def gen_plotly_response(request):
@@ -4195,3 +4170,39 @@ def handle_missing_data(df):
         return df, data
     except Exception as e:
         print(e)
+
+
+###Data scout Apis:
+from .data_scout import DataScout_agent,DataScout_agent_with_pdf
+@csrf_exempt
+@api_view(['POST'])
+def create_data_with_data_scout(request):
+    prompt = request.data.get('prompt')
+    data_type = request.data.get('type')
+
+    if not prompt or not data_type:
+        return Response({"error": "Prompt and type are required"}, status=400)
+
+    if data_type == "Excel":
+        agent1 = DataScout_agent()
+    else:
+        agent1 = DataScout_agent_with_pdf()
+
+    try:
+        result = agent1.invoke(prompt)
+        if 'output' in result:
+            return Response({"file_path": result['output']})
+        else:
+            return Response({"error": "Failed to generate file"}, status=500)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+#Predictive Maintenence Apis:
+# @csrf_exempt
+# def predictive_maintenence(request):
+#     if request.method == "POST":
+#         try:
+#             # Load CSV
+#             csv_file_path = 'data.csv'
+#             df = pd.read_csv(csv_file_path)
